@@ -1,0 +1,43 @@
+# Auto-fixes the go-calendar Pokemon GO .ics floating-time bug and republishes.
+# Runs daily. The fixed file is served from this repo's "raw" URL so Google
+# Calendar (and therefore Chronicle Bot) sees correctly zoned events.
+#
+# After enabling: subscribe Google Calendar to the RAW URL of gocal-fixed.ics
+# on your repo's main branch, e.g.
+#   https://raw.githubusercontent.com/<you>/<repo>/main/gocal-fixed.ics
+name: Refresh Pokemon GO calendar (timezone fix)
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC daily (~02:00 PDT), after go-calendar's nightly publish
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download go-calendar feeds
+        run: |
+          mkdir -p feeds
+          curl -sL "https://github.com/othyn/go-calendar/releases/latest/download/gocal.ics" -o feeds/gocal.ics
+
+      - name: Inject America/Los_Angeles timezone
+        run: |
+          python3 fix_timezone.py feeds/gocal.ics gocal-fixed.ics America/Los_Angeles
+
+      - name: Commit fixed calendar
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gocal-fixed.ics
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "chore: refresh timezone-fixed Pokemon GO calendar"
+            git push
+          fi
